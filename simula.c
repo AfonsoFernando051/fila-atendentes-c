@@ -2,24 +2,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
-
-#define SUPERIOR 1310171
-#define VELOCIDADE 9806
-
-typedef struct {
-    int id;  // identificador do atendente
-    Fila fila;  // tamanho da fila do atendente
-} Atendente;
-
-typedef struct Node {
-    int cliente;
-    struct Node* next;
-} Node;
-
-typedef struct {
-    Node* front;
-    Node* rear;
-} Fila;
+#include "simula.h"
 
 unsigned randomico(unsigned anterior) {
     return ((unsigned long)VELOCIDADE * (unsigned long)anterior) % SUPERIOR + 1;
@@ -43,15 +26,6 @@ int atendimento(int media, int semente) {
     return (int)ceil(-media * log((double)ultimoRandomico / SUPERIOR));
 }
 
-Atendente* criarAtendentes(int numAtendentes) {
-    Atendente* atendentes = (Atendente*)malloc(numAtendentes * sizeof(Atendente));
-    for (int i = 0; i < numAtendentes; i++) {
-        atendentes[i].id = i + 1;
-        atendentes[i].fila = *criarFila();
-    }
-    return atendentes;
-}
-
 Fila* criarFila() {
     Fila* fila = (Fila*)malloc(sizeof(Fila));
     fila->front = NULL;
@@ -73,11 +47,12 @@ void enfileirar(Fila* fila, int cliente) {
     }
 }
 
-Node* desenfileirar(Fila* fila) {
+int desenfileirar(Fila* fila) {
     if (fila->front == NULL) {
-        return NULL;  // fila vazia
+        return -1;  // fila vazia
     }
 
+    int cliente = fila->front->cliente;
     Node* temp = fila->front;
 
     if (fila->front == fila->rear) {
@@ -87,13 +62,14 @@ Node* desenfileirar(Fila* fila) {
         fila->front = fila->front->next;
     }
 
-    return temp;
+    free(temp);
+    return cliente;
 }
 
 void simular(int numAtendentes, int tempoTotal, int tempoChegada, int tempoOperacao, int semente) {
     srand(semente);
 
-    Atendente* atendentes = criarAtendentes(numAtendentes);
+    Atendente* atendentes = (Atendente*)malloc(numAtendentes * sizeof(Atendente));
 
     printf("Rodando simulacao de %d minuto(s) com %d fila(s)\n", tempoTotal, numAtendentes);
     printf("Tempos medios: chegada = %d; operacao = %d\n", tempoChegada, tempoOperacao);
@@ -102,38 +78,26 @@ void simular(int numAtendentes, int tempoTotal, int tempoChegada, int tempoOpera
     int tempoAtual = 0;
     int clienteId = 1;
 
+    Fila* filaGlobal = criarFila();
+
     while (tempoAtual < tempoTotal) {
         int chegadaCliente = chegada(tempoChegada, semente);
-        int atendenteDisponivel = -1;
-        int menorFila = numAtendentes + 1;
-
-        // Encontrar atendente com a menor fila
-        for (int i = 0; i < numAtendentes; i++) {
-            if (atendentes[i].fila < menorFila) {
-                menorFila = atendentes[i].fila;
-                atendenteDisponivel = i;
-            }
-        }
 
         if (chegadaCliente < tempoTotal - tempoAtual) {
-            printf("%06d\nChegada do cliente %d no box %d (tamanho fila: %d)\n", tempoAtual, clienteId, atendenteDisponivel + 1, menorFila);
-            enfileirar(&atendentes[atendenteDisponivel].fila, clienteId);
+            printf("%06d\nChegada do cliente %d (tamanho fila global: %d)\n", tempoAtual, clienteId, filaGlobal->rear == NULL ? 0 : 1);
+            enfileirar(filaGlobal, clienteId);
             clienteId++;
         }
 
-        // Verificar se algum atendente está livre
         for (int i = 0; i < numAtendentes; i++) {
-            if (atendentes[i].fila > 0) {
-                Node* clienteAtendido = desenfileirar(&atendentes[i].fila);
-                    if (clienteAtendido != NULL) {
-                        int clienteId = clienteAtendido->cliente;
-                        printf("%06d\nInicio de atendimento do cliente %d box %d (tempo na fila: %d)\n", tempoAtual, clienteId, i + 1, tempoAtual - chegadaCliente);
-                        int tempoAtendimento = atendimento(tempoOperacao, semente);
-                        tempoAtual += tempoAtendimento;
-                        printf("%06d\nFinal de atendimento do cliente %d no box %d (fila: %d; total: %d)\n", tempoAtual, clienteId, i + 1, atendentes[i].fila.front, tempoAtendimento);
-                        free(clienteAtendido);  // Liberar a memória alocada para o nó do cliente
-                    }
-                }
+            if (atendentes[i].id == 0 && filaGlobal->front != NULL) {
+                int clienteAtendido = desenfileirar(filaGlobal);
+                atendentes[i].id = clienteAtendido;
+                printf("%06d\nInicio de atendimento do cliente %d no box %d (tempo na fila: %d)\n", tempoAtual, clienteAtendido, i + 1, tempoAtual - chegadaCliente);
+                int tempoAtendimento = atendimento(tempoOperacao, semente);
+                tempoAtual += tempoAtendimento;
+                printf("%06d\nFinal de atendimento do cliente %d no box %d (fila: %d; total: %d)\n", tempoAtual, clienteAtendido, i + 1, filaGlobal->rear == NULL ? 0 : 1, tempoAtendimento);
+            }
         }
 
         tempoAtual += chegadaCliente;
@@ -144,9 +108,7 @@ void simular(int numAtendentes, int tempoTotal, int tempoChegada, int tempoOpera
     // Calcule e imprima as médias como necessário
 
     // Liberar memória alocada
-    for (int i = 0; i < numAtendentes; i++) {
-        free(atendentes[i].fila.front);
-    }
+    free(filaGlobal);
     free(atendentes);
 }
 
